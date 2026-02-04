@@ -1,0 +1,89 @@
+{
+    "Forms": {
+      "Locations": {
+        "Test": {
+          "form_burgers": {
+            "title": "Burger Line Check",
+            "createdBy": "adminUser",
+            "permissions": {
+              "admins": {
+                "adminUser": true
+              }
+            },
+            "fields": {
+              "field_1": {
+                "label": "Burger Patty Temp",
+                "min": 155,
+                "max": 165
+              },
+              "field_2": {
+                "label": "Cheese Melted",
+                "min": 1,
+                "max": 1
+              },
+              "field_3": {
+                "label": "Bun Warmer Temp",
+                "min": 135,
+                "max": 160
+              }
+            }
+          },
+  
+          "form_chicken": {
+            "title": "Chicken Line Check",
+            "createdBy": "adminUser",
+            "permissions": {
+              "admins": {
+                "adminUser": true
+              }
+            },
+            "fields": {
+              "field_1": {
+                "label": "Grilled Chicken Temp",
+                "min": 165,
+                "max": 180
+              },
+              "field_2": {
+                "label": "Fried Chicken Hold Temp",
+                "min": 140,
+                "max": 165
+              },
+              "field_3": {
+                "label": "Raw Chicken Cooler Temp",
+                "min": 32,
+                "max": 40
+              }
+            }
+          },
+  
+          "form_hot_holding": {
+            "title": "Hot Holding Temps",
+            "createdBy": "adminUser",
+            "permissions": {
+              "admins": {
+                "adminUser": true
+              }
+            },
+            "fields": {
+              "field_1": {
+                "label": "Soup Well Temp",
+                "min": 140,
+                "max": 180
+              },
+              "field_2": {
+                "label": "Gravy Station Temp",
+                "min": 140,
+                "max": 180
+              },
+              "field_3": {
+                "label": "Steam Table Temp",
+                "min": 135,
+                "max": 165
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  

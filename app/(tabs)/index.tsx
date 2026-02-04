@@ -4,40 +4,52 @@ import { router } from 'expo-router';
 
 export default function HomeScreen() {
   return (
-      <View>
+      <View style={styles.buttonContainer}>
+        <View style={styles.buttonWrapper}>
       <Pressable
-        style={{ padding: 20, backgroundColor: 'green', borderRadius: 10 }}
+        style={styles.buttons}
         onPress={() => router.push('../forms/my-forms')}
       >
         View Forms
-
       </Pressable>
+      </View>
       <Pressable
-        style={{ padding: 20, backgroundColor: 'green', borderRadius: 10 }}
+        style={styles.buttons}
         onPress={() => router.push('../forms/add-forms')}
       >
         Add Forms
       </Pressable>
-      </View>
+      <Pressable
+        style={styles.buttons}
+        onPress={() => router.push('../forms/completed-forms')}
+      >
+        Completed Forms
+      </Pressable>
+
+      </View >
        
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  buttons: {
+    backgroundColor: 'green',
+    width: '50%',
+    borderRadius: 50,
+    padding: '1%',
+    textAlign: 'center'
+  },
+
+  buttonContainer: {
+    flex: 1,
+    width: '100%',
     alignItems: 'center',
-    gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+
+  buttonWrapper: {
+    paddingTop: '5%',
+    width: '50%',
+    alignItems: 'center'
+
+  }
 });

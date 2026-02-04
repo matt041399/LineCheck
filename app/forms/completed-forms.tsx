@@ -22,7 +22,7 @@ export default function MyForms() {
   useEffect(() => {
     async function fetchForms() {
       const location = 'Test'; // hard-coded for now
-      const locationRef = ref(db, `Forms/Locations/${location}`);
+      const locationRef = ref(db, `CompletedForms/${location}`);
       const snapshot = await get(locationRef);
 
       if (snapshot.exists()) {
@@ -50,28 +50,13 @@ export default function MyForms() {
       style={styles.formButton}
       onPress={() =>
         router.push({
-          pathname: '/forms/[formId]',
+          pathname: '/forms/completed/[formId]',
           params: { formId: form.id },
         } as any)
       }
     >
-      <Text style={styles.formText}>{form.title}</Text>
+      <Text style={styles.formText}>{form.id}</Text>
     </Pressable>
-
-    {/* Edit form — ADMIN ONLY */}
-    {IS_ADMIN && (
-      <Pressable
-        style={styles.editButton}
-        onPress={() =>
-          router.push({
-            pathname: '/forms/edit/[formId]',
-            params: { formId: form.id },
-          } as any)
-        }
-      >
-        <Text style={styles.editText}>✏️</Text>
-      </Pressable>
-    )}
   </View>
 ))}
 

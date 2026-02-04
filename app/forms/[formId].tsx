@@ -1,54 +1,130 @@
-import { useLocalSearchParams } from 'expo-router';
-import { get, ref } from 'firebase/database';
+import { router, useLocalSearchParams } from 'expo-router';
+import { get, ref, set } from 'firebase/database';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { db } from '../firebase/firebase'; // adjust path if needed
+import { db } from '../firebase/firebase';
+
+
+interface Field {
+  id: string;
+  label: string;
+  min: number;
+  max: number;
+}
+
+interface FormData {
+  title: string;
+  fields: Field[];
+}
 
 export default function Linecheck() {
   const { formId } = useLocalSearchParams<{ formId: string }>();
-  const [values, setValues] = useState<{ [key: string]: string }>({});
-  const [formData, setFormData] = useState<{ title: string; items: { id: string; label: string }[] }>({
+
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState<FormData>({
     title: '',
-    items: [],
+    fields: [],
   });
 
-  // Load form from Firebase
+  const getTodayDate = () => {
+    return new Date().toISOString().split('T')[0];
+  };
+
+  const handleSubmit = async () => {
+    if (!formId) return;
+  
+    const location = 'Test';
+    const today = getTodayDate();
+  
+    const submissionKey = `${today}-${location}-${formData.title}`;
+  
+    const completedRef = ref(
+      db,
+      `CompletedForms/${location}/${submissionKey}`
+    );
+
+    const missing = formData.fields.some(
+      (field) => !values[field.id]
+    );
+    
+    if (missing) {
+      alert('Please fill out all fields before submitting.');
+      return;
+    }
+    
+    const entries = formData.fields.reduce<Record<string, any>>((acc, field) => {
+      acc[field.id] = {
+        label: field.label,
+        value: Number(values[field.id]),
+        min: field.min,
+        max: field.max,
+      };
+      return acc;
+    }, {});
+    
+  
+    await set(completedRef, {
+      formId,
+      title: formData.title,
+      location,
+      submittedAt: Date.now(),
+      entries,
+    });
+  
+    router.push('../forms/completed-forms')
+  };
+  
+  
+
   useEffect(() => {
     if (!formId) return;
 
     const formRef = ref(db, `Forms/Locations/Test/${formId}`);
+
     get(formRef).then((snapshot) => {
+      if (!snapshot.exists()) return;
+
       const data = snapshot.val();
-      if (data) {
-        // convert array of labels to items with unique ids
-        const items = data.data.map((label: string, idx: number) => ({
-          id: `${formId}-${idx}`,
-          label,
-        }));
-        setFormData({ title: data.title, items });
-      }
+
+      const fields: Field[] = data.fields
+        ? Object.entries(data.fields).map(([id, field]: any) => ({
+            id,
+            label: field.label,
+            min: field.min,
+            max: field.max,
+          }))
+        : [];
+
+      setFormData({
+        title: data.title,
+        fields,
+      });
     });
   }, [formId]);
 
   return (
     <View style={styles.container}>
       <View style={styles.background}>
-        <View style={styles.title}>{formData.title}</View>
+        <Text style={styles.title}>{formData.title}</Text>
 
         <View style={styles.table}>
-          {formData.items.map((item) => (
-            <View key={item.id} style={styles.row}>
-              <Text style={styles.label}>{item.label}</Text>
+          {formData.fields.map((field) => (
+            <View key={field.id} style={styles.row}>
+              <Text style={styles.label}>
+                {field.label} ({field.min}–{field.max})
+              </Text>
+
               <TextInput
                 placeholder="°F"
                 keyboardType="numeric"
                 style={styles.input}
-                value={values[item.id] || ''}
+                value={values[field.id] || ''}
                 onChangeText={(text) => {
                   let cleaned = text.replace(/[^0-9]/g, '');
-                  let num = parseInt(cleaned, 10);
-                  if (!isNaN(num) && num > 300) cleaned = '300';
-                  setValues((prev) => ({ ...prev, [item.id]: cleaned }));
+                  setValues((prev) => ({
+                    ...prev,
+                    [field.id]: cleaned,
+                  }));
                 }}
               />
             </View>
@@ -56,7 +132,7 @@ export default function Linecheck() {
         </View>
 
         <View style={styles.submitContainer}>
-          <Pressable style={styles.submitButton}>
+          <Pressable style={styles.submitButton} onPress={handleSubmit}>
             <Text style={styles.submitText}>Submit</Text>
           </Pressable>
         </View>
@@ -65,13 +141,10 @@ export default function Linecheck() {
   );
 }
 
-export const unstable_settings = {
-    initialRouteName: 'forms/[formId]', // optional, but good practice
-  };
-  
-  export const options = {
-    headerShown: false, // <-- this hides the top bar
-  };
+export const options = {
+  headerShown: false,
+};
+
 
 const styles = StyleSheet.create({
   container: {
