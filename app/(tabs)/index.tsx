@@ -25,7 +25,12 @@ export default function HomeScreen() {
       >
         Completed Forms
       </Pressable>
-
+      <Pressable
+        style={styles.buttons}
+        onPress={() => router.push('../users/signin')}
+      >
+        Test Login
+      </Pressable>
       </View >
        
   );

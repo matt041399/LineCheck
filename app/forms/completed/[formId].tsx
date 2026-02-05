@@ -7,9 +7,10 @@ import { db } from '../../firebase/firebase';
 interface Entry {
   id: string;
   label: string;
-  value: number;
-  min: number;
-  max: number;
+  type: 'temperature' | 'date';
+  value: number | string;
+  min?: number | null;
+  max?: number | null;
 }
 
 export default function CompletedFormView() {
@@ -25,10 +26,7 @@ export default function CompletedFormView() {
     if (!formId) return;
 
     const locationKey = 'Test'; // hard-coded for now
-    const submissionRef = ref(
-      db,
-      `CompletedForms/${locationKey}/${formId}`
-    );
+    const submissionRef = ref(db, `CompletedForms/${locationKey}/${formId}`);
 
     get(submissionRef).then((snapshot) => {
       if (!snapshot.exists()) return;
@@ -39,9 +37,10 @@ export default function CompletedFormView() {
         ? Object.entries<any>(data.entries).map(([id, entry]) => ({
             id,
             label: entry.label,
+            type: entry.type,
             value: entry.value,
-            min: entry.min,
-            max: entry.max,
+            min: entry.min ?? null,
+            max: entry.max ?? null,
           }))
         : [];
 
@@ -52,6 +51,30 @@ export default function CompletedFormView() {
       setLoading(false);
     });
   }, [formId]);
+
+  const isPass = (entry: Entry) => {
+    if (entry.type === 'temperature') {
+      // only check min/max if they are numbers
+      return (
+        typeof entry.value === 'number' &&
+        typeof entry.min === 'number' &&
+        typeof entry.max === 'number' &&
+        entry.value >= entry.min &&
+        entry.value <= entry.max
+      );
+    } else if (entry.type === 'date') {
+      if (typeof entry.value !== 'string') return false;
+  
+      const [mm, dd] = entry.value.split('-').map(Number);
+      const today = new Date();
+      const entryDate = new Date(today.getFullYear(), mm - 1, dd);
+  
+      return entryDate >= new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    }
+  
+    return false;
+  };
+  
 
   if (loading) {
     return (
@@ -71,16 +94,17 @@ export default function CompletedFormView() {
 
         <View style={styles.table}>
           {entries.map((entry) => {
-            const pass =
-              entry.value >= entry.min && entry.value <= entry.max;
+            const pass = isPass(entry);
 
             return (
               <View key={entry.id} style={styles.row}>
                 <View style={styles.labelCol}>
                   <Text style={styles.label}>{entry.label}</Text>
-                  <Text style={styles.range}>
-                    Acceptable: {entry.min}–{entry.max}
-                  </Text>
+                  {entry.type === 'temperature' && (
+                    <Text style={styles.range}>
+                      Acceptable: {entry.min}–{entry.max}
+                    </Text>
+                  )}
                 </View>
 
                 <View

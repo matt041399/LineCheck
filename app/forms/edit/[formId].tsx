@@ -1,12 +1,16 @@
+import { Picker } from '@react-native-picker/picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { get, ref, update } from 'firebase/database';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { db } from '../../firebase/firebase';
 
+
 interface FormRow {
   id: string;
+  type: 'temperature' | 'date';
   label: string;
+  description: string;
   min: string;
   max: string;
 }
@@ -34,7 +38,9 @@ export default function EditForm() {
       const loadedRows: FormRow[] = data.fields
         ? Object.entries<any>(data.fields).map(([fieldId, field]) => ({
             id: fieldId,
+            type: field.type ?? 'temperature',
             label: field.label ?? '',
+            description: field.description ?? '',
             min: field.min?.toString() ?? '',
             max: field.max?.toString() ?? '',
           }))
@@ -50,7 +56,7 @@ export default function EditForm() {
     const newId = `field_${Date.now()}`;
     setRows((prev) => [
       ...prev,
-      { id: newId, label: '', min: '', max: '' },
+      { id: newId, type: 'temperature', label: '', description: '', min: '', max: '' },
     ]);
   };
 
@@ -58,7 +64,11 @@ export default function EditForm() {
     setRows((prev) => prev.filter((r) => r.id !== id));
   };
 
-  const updateRow = (id: string, field: keyof FormRow, value: string) => {
+  const updateRow = (
+    id: string,
+    field: keyof FormRow,
+    value: string
+  ) => {
     setRows((prev) =>
       prev.map((row) =>
         row.id === id ? { ...row, [field]: value } : row
@@ -72,9 +82,11 @@ export default function EditForm() {
 
     const fieldsObject = rows.reduce<Record<string, any>>((acc, row) => {
       acc[row.id] = {
+        type: row.type,
         label: row.label,
-        min: Number(row.min),
-        max: Number(row.max),
+        description: row.description,
+        min: row.type === 'temperature' ? Number(row.min) : null,
+        max: row.type === 'temperature' ? Number(row.max) : null,
       };
       return acc;
     }, {});
@@ -102,7 +114,6 @@ export default function EditForm() {
     <View style={styles.container}>
       <View style={styles.card}>
         <Text style={styles.header}>Edit Form</Text>
-        <Text style={styles.header}></Text>
         <Text style={styles.header}>Form Title</Text>
         <TextInput
           placeholder="Form Title"
@@ -111,14 +122,29 @@ export default function EditForm() {
           style={styles.titleInput}
         />
         <View style={styles.headerRow}>
-  <Text style={[styles.headerText, styles.labelCol]}>Label</Text>
-  <Text style={[styles.headerText, styles.numCol]}>Min</Text>
-  <Text style={[styles.headerText, styles.numCol]}>Max</Text>
-  <View style={styles.deleteSpacer} />
-</View>
+          <Text style={[styles.headerText, styles.typeCol]}>Type</Text>
+          <Text style={[styles.headerText, styles.labelCol]}>Label</Text>
+          <Text style={[styles.headerText, styles.descCol]}>Description</Text>
+          <Text style={[styles.headerText, styles.numCol]}>Min</Text>
+          <Text style={[styles.headerText, styles.numCol]}>Max</Text>
+          <View style={styles.deleteSpacer} />
+        </View>
 
         {rows.map((row) => (
           <View key={row.id} style={styles.row}>
+            {/* Type Dropdown */}
+            <View style={styles.typePicker}>
+              <Picker
+                selectedValue={row.type}
+                onValueChange={(val) => updateRow(row.id, 'type', val)}
+                style={{ height: 40, width: '100%' }}
+              >
+                <Picker.Item label="Temperature" value="temperature" />
+                <Picker.Item label="Date" value="date" />
+              </Picker>
+            </View>
+
+            {/* Label */}
             <TextInput
               placeholder="Label"
               value={row.label}
@@ -126,25 +152,42 @@ export default function EditForm() {
               style={styles.labelInput}
             />
 
+            {/* Description */}
             <TextInput
-              placeholder="Min"
-              keyboardType="numeric"
-              value={row.min}
-              onChangeText={(v) =>
-                updateRow(row.id, 'min', v.replace(/[^0-9]/g, ''))
-              }
-              style={styles.numInput}
+              placeholder="Description"
+              value={row.description}
+              onChangeText={(v) => updateRow(row.id, 'description', v)}
+              style={styles.descInput}
             />
 
-            <TextInput
-              placeholder="Max"
-              keyboardType="numeric"
-              value={row.max}
-              onChangeText={(v) =>
-                updateRow(row.id, 'max', v.replace(/[^0-9]/g, ''))
-              }
-              style={styles.numInput}
-            />
+            {/* Min/Max only for temperature */}
+            {row.type === 'temperature' ? (
+              <>
+                <TextInput
+                  placeholder="Min"
+                  keyboardType="numeric"
+                  value={row.min}
+                  onChangeText={(v) =>
+                    updateRow(row.id, 'min', v.replace(/[^0-9]/g, ''))
+                  }
+                  style={styles.numInput}
+                />
+                <TextInput
+                  placeholder="Max"
+                  keyboardType="numeric"
+                  value={row.max}
+                  onChangeText={(v) =>
+                    updateRow(row.id, 'max', v.replace(/[^0-9]/g, ''))
+                  }
+                  style={styles.numInput}
+                />
+              </>
+            ) : (
+              <>
+                <View style={styles.numInputPlaceholder} />
+                <View style={styles.numInputPlaceholder} />
+              </>
+            )}
 
             <Pressable onPress={() => removeRow(row.id)}>
               <Text style={styles.remove}>−</Text>
@@ -180,24 +223,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: '#ccc',
   },
-  
   headerText: {
     fontSize: 14,
     fontWeight: '700',
     textAlign: 'center',
   },
-  
+  typeCol: {
+    flex: 1,
+  },
   labelCol: {
-    flex: 2,          
+    flex: 2,
   },
-  
+  descCol: {
+    flex: 2,
+  },
   numCol: {
-    flex: 1,          
+    flex: 1,
   },
-  
   deleteSpacer: {
-    width: 24,        
-  },  
+    width: 24,
+  },
   card: {
     width: '90%',
     backgroundColor: '#fff',
@@ -222,12 +267,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  typePicker: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    marginRight: 4,
+  },
   labelInput: {
     flex: 2,
     borderWidth: 1,
     borderColor: '#ccc',
     padding: 8,
     marginRight: 4,
+  },
+  descInput: {
+    flex: 2,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 8,
+    marginHorizontal: 4,
   },
   numInput: {
     flex: 1,
@@ -236,6 +294,10 @@ const styles = StyleSheet.create({
     padding: 8,
     marginHorizontal: 4,
     textAlign: 'center',
+  },
+  numInputPlaceholder: {
+    flex: 1,
+    marginHorizontal: 4,
   },
   remove: {
     fontSize: 22,
