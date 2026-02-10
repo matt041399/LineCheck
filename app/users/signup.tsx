@@ -15,30 +15,30 @@ export default function Signup() {
 
   const handleSignup = async () => {
     console.log('Signup pressed');
+    console.log({ email, password, confirmPassword });
   
-    if (!email || !password || !confirmPassword || !location) {
+    if (!email || !password || !confirmPassword) {
+      console.log('Missing fields detected');
       Alert.alert('Error', 'Please fill out all fields');
       return;
     }
   
     if (password !== confirmPassword) {
+      console.log('Passwords do not match');
       Alert.alert('Error', 'Passwords do not match');
       return;
     }
   
     try {
-      console.log('Creating user in Firebase Auth...');
-      if (!auth) {
-        console.error('Firebase Auth is undefined');
-        return;
-      }
-  
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       console.log('User created:', userCredential.user.uid);
   
+      // Assign location manually
+      const assignedLocation = 'Test'; 
+  
       await set(ref(db, `Users/${userCredential.user.uid}`), {
         email,
-        location,
+        location: assignedLocation,
         isAdmin: false,
         createdAt: Date.now(),
       });
@@ -51,6 +51,8 @@ export default function Signup() {
       Alert.alert('Signup Error', error.message || 'Something went wrong');
     }
   };
+  
+  
   
   
 

@@ -13,7 +13,7 @@ export default function Login() {
   const handleLogin = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      router.replace('/forms/my-forms');
+      router.replace('/(tabs)');
     } catch (e: any) {
       setError(e.message);
     }
@@ -26,7 +26,8 @@ export default function Login() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.header}>Welcome</Text>
+        <Text style={styles.header}>Welcome Back</Text>
+        <Text style={styles.subheader}>Sign in to continue</Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -82,8 +83,13 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 24,
+    marginBottom: 8,
     color: '#333',
+  },
+  subheader: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 24,
   },
   input: {
     width: '100%',

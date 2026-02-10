@@ -1,60 +1,102 @@
-import { Pressable, StyleSheet, View } from 'react-native';
-
 import { router } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 export default function HomeScreen() {
-  return (
-      <View style={styles.buttonContainer}>
-        <View style={styles.buttonWrapper}>
-      <Pressable
-        style={styles.buttons}
-        onPress={() => router.push('../forms/my-forms')}
-      >
-        View Forms
-      </Pressable>
+  const NavigationCard = ({ title, description, route, color }: { 
+    title: string; 
+    description: string; 
+    route: string;
+    color: string;
+  }) => (
+    <Pressable
+      style={[styles.card, { backgroundColor: color }]}
+      onPress={() => router.push(route as any)}
+    >
+      <View style={styles.cardContent}>
+        <Text style={styles.cardTitle}>{title}</Text>
+        <Text style={styles.cardDescription}>{description}</Text>
       </View>
-      <Pressable
-        style={styles.buttons}
-        onPress={() => router.push('../forms/add-forms')}
-      >
-        Add Forms
-      </Pressable>
-      <Pressable
-        style={styles.buttons}
-        onPress={() => router.push('../forms/completed-forms')}
-      >
-        Completed Forms
-      </Pressable>
-      <Pressable
-        style={styles.buttons}
-        onPress={() => router.push('../users/signin')}
-      >
-        Test Login
-      </Pressable>
-      </View >
-       
+    </Pressable>
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Dashboard</Text>
+        <Text style={styles.headerSubtitle}>Manage your forms and line checks</Text>
+      </View>
+
+      <View style={styles.cardsContainer}>
+        <NavigationCard
+          title="View Forms"
+          description="Browse and fill out available forms"
+          route="../forms/my-forms"
+          color="#4caf50"
+        />
+        
+        <NavigationCard
+          title="Add Forms"
+          description="Create new form templates"
+          route="../forms/add-forms"
+          color="#2196f3"
+        />
+        
+        <NavigationCard
+          title="Completed Forms"
+          description="Review submitted line checks"
+          route="../forms/completed-forms"
+          color="#ff9800"
+        />
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  buttons: {
-    backgroundColor: 'green',
-    width: '50%',
-    borderRadius: 50,
-    padding: '1%',
-    textAlign: 'center'
-  },
-
-  buttonContainer: {
+  container: {
     flex: 1,
-    width: '100%',
-    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    padding: 20,
   },
-
-  buttonWrapper: {
-    paddingTop: '5%',
-    width: '50%',
-    alignItems: 'center'
-
-  }
+  header: {
+    marginTop: 40,
+    marginBottom: 30,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  headerSubtitle: {
+    fontSize: 16,
+    color: '#666',
+  },
+  cardsContainer: {
+    flex: 1,
+    gap: 16,
+  },
+  card: {
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    minHeight: 120,
+    justifyContent: 'center',
+  },
+  cardContent: {
+    gap: 8,
+  },
+  cardTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  cardDescription: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
 });

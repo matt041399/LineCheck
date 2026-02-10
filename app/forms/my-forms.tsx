@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { get, ref } from 'firebase/database';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { db } from '../firebase/firebase';
+import { auth, db } from '../firebase/firebase';
 
 interface Form {
   id: string;
@@ -10,23 +10,31 @@ interface Form {
   data: string[];
 }
 
-const IS_ADMIN = true;//change later after users are added
-
-
-
-
 export default function MyForms() {
   const [forms, setForms] = useState<Form[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    async function fetchForms() {
-      const location = 'Test'; // hard-coded for now
-      const locationRef = ref(db, `Forms/Locations/${location}`);
-      const snapshot = await get(locationRef);
+    async function fetchUserAndForms() {
+      if (!auth.currentUser) return;
 
-      if (snapshot.exists()) {
-        const formsData = snapshot.val();
+      const uid = auth.currentUser.uid;
+      const userRef = ref(db, `Users/${uid}`);
+      const userSnapshot = await get(userRef);
+
+      if (userSnapshot.exists()) {
+        const userData = userSnapshot.val();
+        setIsAdmin(userData.isAdmin ?? false);
+      }
+
+      // Fetch forms for the user's location
+      const location = userSnapshot.exists() ? userSnapshot.val().location : 'Test';
+      const formsRef = ref(db, `Forms/Locations/${location}`);
+      const formsSnapshot = await get(formsRef);
+
+      if (formsSnapshot.exists()) {
+        const formsData = formsSnapshot.val();
         const formsArray: Form[] = Object.keys(formsData).map((formId) => ({
           id: formId,
           title: formsData[formId].title,
@@ -36,7 +44,7 @@ export default function MyForms() {
       }
     }
 
-    fetchForms();
+    fetchUserAndForms();
   }, []);
 
   return (
@@ -44,40 +52,40 @@ export default function MyForms() {
       <Text style={styles.title}>My Forms</Text>
 
       {forms.map((form) => (
-  <View key={form.id} style={styles.row}>
-    {/* View form */}
-    <Pressable
-      style={styles.formButton}
-      onPress={() =>
-        router.push({
-          pathname: '/forms/[formId]',
-          params: { formId: form.id },
-        } as any)
-      }
-    >
-      <Text style={styles.formText}>{form.title}</Text>
-    </Pressable>
+        <View key={form.id} style={styles.row}>
+          {/* View form */}
+          <Pressable
+            style={styles.formButton}
+            onPress={() =>
+              router.push({
+                pathname: '/forms/[formId]',
+                params: { formId: form.id },
+              } as any)
+            }
+          >
+            <Text style={styles.formText}>{form.title}</Text>
+          </Pressable>
 
-    {/* Edit form — ADMIN ONLY */}
-    {IS_ADMIN && (
-      <Pressable
-        style={styles.editButton}
-        onPress={() =>
-          router.push({
-            pathname: '/forms/edit/[formId]',
-            params: { formId: form.id },
-          } as any)
-        }
-      >
-        <Text style={styles.editText}>✏️</Text>
-      </Pressable>
-    )}
-  </View>
-))}
-
+          {/* Edit form — ADMIN ONLY */}
+          {isAdmin && (
+            <Pressable
+              style={styles.editButton}
+              onPress={() =>
+                router.push({
+                  pathname: '/forms/edit/[formId]',
+                  params: { formId: form.id },
+                } as any)
+              }
+            >
+              <Text style={styles.editText}>✏️</Text>
+            </Pressable>
+          )}
+        </View>
+      ))}
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
