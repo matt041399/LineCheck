@@ -1,9 +1,10 @@
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
-import { push, ref, set } from 'firebase/database';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { db } from '../firebase/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { get, push, ref, set } from 'firebase/database';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { auth, db } from '../firebase/firebase';
 
 type FieldType = 'temperature' | 'date';
 
@@ -19,9 +20,30 @@ export default function AddForm() {
   const router = useRouter();
 
   const [title, setTitle] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [userLocations, setUserLocations] = useState<string[]>([]);
   const [lines, setLines] = useState<Line[]>([
     { type: 'temperature', label: '', description: '', min: '', max: '' },
   ]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const userRef = ref(db, `Users/${user.uid}`);
+        const snapshot = await get(userRef);
+        if (snapshot.exists()) {
+          const userData = snapshot.val();
+          const locations = userData.location || [];
+          setUserLocations(locations);
+          if (locations.length > 0) {
+            setSelectedLocation(locations[0]);
+          }
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleAddLine = () => {
     setLines((prev) => [
@@ -42,7 +64,6 @@ export default function AddForm() {
     const updated = [...lines];
     updated[index] = { ...updated[index], [field]: value };
 
-    // Clear min/max when switching to date
     if (field === 'type' && value === 'date') {
       updated[index].min = '';
       updated[index].max = '';
@@ -54,6 +75,11 @@ export default function AddForm() {
   const handleSubmit = async () => {
     if (!title.trim()) {
       alert('Please enter a form title');
+      return;
+    }
+
+    if (!selectedLocation) {
+      alert('Please select a location');
       return;
     }
 
@@ -76,7 +102,7 @@ export default function AddForm() {
       return acc;
     }, {});
 
-    const formsRef = ref(db, 'Forms/Locations/Test');
+    const formsRef = ref(db, `Forms/Locations/${selectedLocation}`);
     const newFormRef = push(formsRef);
 
     await set(newFormRef, {
@@ -85,89 +111,130 @@ export default function AddForm() {
       createdAt: Date.now(),
     });
 
-    router.push(`/forms/${newFormRef.key}`);
+    router.back();
   };
 
   return (
     <View style={styles.container}>
-      <TextInput
-        style={styles.titleInput}
-        placeholder="Form Title"
-        value={title}
-        onChangeText={setTitle}
-      />
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Text style={styles.backText}>← Back</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>Create New Form</Text>
+      </View>
 
-      {lines.map((line, idx) => (
-        <View key={idx} style={styles.row}>
-          {/* Type */}
-          <Picker
-            selectedValue={line.type}
-            style={styles.picker}
-            onValueChange={(value) =>
-              handleChangeLine(idx, 'type', value)
-            }
-          >
-            <Picker.Item label="Temperature" value="temperature" />
-            <Picker.Item label="Date" value="date" />
-          </Picker>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.formCard}>
+          <Text style={styles.sectionTitle}>Form Details</Text>
+          
+          <Text style={styles.inputLabel}>Location</Text>
+          <View style={styles.pickerContainer}>
+            <Picker
+              selectedValue={selectedLocation}
+              onValueChange={setSelectedLocation}
+              style={styles.picker}
+            >
+              {userLocations.map((loc) => (
+                <Picker.Item key={loc} label={loc} value={loc} />
+              ))}
+            </Picker>
+          </View>
 
-          {/* Label */}
+          <Text style={styles.inputLabel}>Form Title</Text>
           <TextInput
-            style={styles.input}
-            placeholder="Label"
-            value={line.label}
-            onChangeText={(text) =>
-              handleChangeLine(idx, 'label', text)
-            }
+            placeholder="Enter form title"
+            value={title}
+            onChangeText={setTitle}
+            style={styles.titleInput}
           />
+        </View>
 
-          {/* Description */}
-          <TextInput
-            style={styles.input}
-            placeholder="Description (optional)"
-            value={line.description}
-            onChangeText={(text) =>
-              handleChangeLine(idx, 'description', text)
-            }
-          />
+        <View style={styles.formCard}>
+          <Text style={styles.sectionTitle}>Form Fields</Text>
 
-          {/* Min / Max only for temperature */}
-          {line.type === 'temperature' && (
-            <>
+          {lines.map((line, idx) => (
+            <View key={idx} style={styles.fieldCard}>
+              <View style={styles.fieldHeader}>
+                <Text style={styles.fieldNumber}>Field {idx + 1}</Text>
+                {lines.length > 1 && (
+                  <Pressable onPress={() => handleRemoveLine(idx)} style={styles.removeButton}>
+                    <Text style={styles.removeText}>Remove</Text>
+                  </Pressable>
+                )}
+              </View>
+
+              <Text style={styles.inputLabel}>Type</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={line.type}
+                  onValueChange={(value) => handleChangeLine(idx, 'type', value)}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Temperature" value="temperature" />
+                  <Picker.Item label="Date" value="date" />
+                </Picker>
+              </View>
+
+              <Text style={styles.inputLabel}>Label</Text>
               <TextInput
-                style={styles.rangeInput}
-                placeholder="Min"
-                keyboardType="numeric"
-                value={line.min}
-                onChangeText={(text) =>
-                  handleChangeLine(idx, 'min', text.replace(/[^0-9]/g, ''))
-                }
+                placeholder="Field label"
+                value={line.label}
+                onChangeText={(text) => handleChangeLine(idx, 'label', text)}
+                style={styles.input}
               />
-              <TextInput
-                style={styles.rangeInput}
-                placeholder="Max"
-                keyboardType="numeric"
-                value={line.max}
-                onChangeText={(text) =>
-                  handleChangeLine(idx, 'max', text.replace(/[^0-9]/g, ''))
-                }
-              />
-            </>
-          )}
 
-          <Pressable onPress={() => handleRemoveLine(idx)}>
-            <Text style={styles.removeBtn}>−</Text>
+              <Text style={styles.inputLabel}>Description (Optional)</Text>
+              <TextInput
+                placeholder="Field description"
+                value={line.description}
+                onChangeText={(text) => handleChangeLine(idx, 'description', text)}
+                style={styles.input}
+              />
+
+              {line.type === 'temperature' && (
+                <View style={styles.rangeRow}>
+                  <View style={styles.rangeItem}>
+                    <Text style={styles.inputLabel}>Min Temp</Text>
+                    <TextInput
+                      placeholder="Min"
+                      keyboardType="numeric"
+                      value={line.min}
+                      onChangeText={(text) =>
+                        handleChangeLine(idx, 'min', text.replace(/[^0-9]/g, ''))
+                      }
+                      style={styles.input}
+                    />
+                  </View>
+                  <View style={styles.rangeItem}>
+                    <Text style={styles.inputLabel}>Max Temp</Text>
+                    <TextInput
+                      placeholder="Max"
+                      keyboardType="numeric"
+                      value={line.max}
+                      onChangeText={(text) =>
+                        handleChangeLine(idx, 'max', text.replace(/[^0-9]/g, ''))
+                      }
+                      style={styles.input}
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+          ))}
+
+          <Pressable onPress={handleAddLine} style={styles.addButton}>
+            <Text style={styles.addText}>+ Add Field</Text>
           </Pressable>
         </View>
-      ))}
 
-      <Pressable onPress={handleAddLine}>
-        <Text style={styles.addBtn}>+ Add Field</Text>
-      </Pressable>
-
-      <Pressable style={styles.submitButton} onPress={handleSubmit}>
-        <Text style={styles.submitText}>Create Form</Text>
-      </Pressable>
+        <Pressable onPress={handleSubmit} style={styles.submitButton}>
+          <Text style={styles.submitText}>Create Form</Text>
+        </Pressable>
+      </ScrollView>
     </View>
   );
 }
@@ -175,57 +242,154 @@ export default function AddForm() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
     backgroundColor: '#f5f5f5',
   },
-  titleInput: {
-    fontSize: 20,
+  header: {
+    paddingHorizontal: '5%',
+    paddingTop: '5%',
+    paddingBottom: '3%',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  backButton: {
+    marginBottom: 8,
+  },
+  backText: {
+    fontSize: 16,
+    color: '#2196f3',
+    fontWeight: '500',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: '5%',
+    paddingBottom: '10%',
+  },
+  formCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 8,
+    borderColor: '#e0e0e0',
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
     marginBottom: 16,
   },
-  row: {
-    marginBottom: 12,
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  pickerContainer: {
+    backgroundColor: '#f9f9f9',
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 8,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   picker: {
-    marginBottom: 6,
+    height: 50,
+  },
+  titleInput: {
+    backgroundColor: '#f9f9f9',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    color: '#333',
+  },
+  fieldCard: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  fieldHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  fieldNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  removeButton: {
+    backgroundColor: '#e53935',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  removeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
   },
   input: {
+    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 6,
-    marginBottom: 6,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#333',
   },
-  rangeInput: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 6,
-    marginBottom: 6,
+  rangeRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
   },
-  removeBtn: {
-    color: 'red',
-    fontSize: 20,
-    textAlign: 'right',
+  rangeItem: {
+    flex: 1,
   },
-  addBtn: {
-    fontSize: 18,
-    color: 'blue',
-    marginVertical: 16,
-    textAlign: 'center',
+  addButton: {
+    backgroundColor: '#2196f3',
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  addText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   submitButton: {
-    backgroundColor: 'green',
-    paddingVertical: 12,
+    backgroundColor: '#4caf50',
     borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   submitText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 18,
     fontWeight: '600',
-    textAlign: 'center',
   },
 });

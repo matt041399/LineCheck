@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { get, ref, set } from 'firebase/database';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { db } from '../firebase/firebase';
 
 type FieldType = 'temperature' | 'date';
@@ -21,7 +21,7 @@ interface FormData {
 }
 
 export default function Linecheck() {
-  const { formId } = useLocalSearchParams<{ formId: string }>();
+  const { formId, location } = useLocalSearchParams<{ formId: string; location: string }>();
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [values, setValues] = useState<Record<string, string>>({});
@@ -31,13 +31,6 @@ export default function Linecheck() {
   });
 
   const getTodayDate = () => new Date().toISOString().split('T')[0];
-
-  const getTodayMMDD = () => {
-    const d = new Date();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${mm}-${dd}`;
-  };
 
   const isValidMMDD = (value: string) => {
     if (!/^\d{2}-\d{2}$/.test(value)) return false;
@@ -52,11 +45,9 @@ export default function Linecheck() {
     return dd >= 1 && dd <= daysInMonth;
   };
 
-
   const handleSubmit = async () => {
-    if (!formId) return;
+    if (!formId || !location) return;
 
-    const location = 'Test';
     const today = getTodayDate();
     const baseKey = `${today}-${location}-${formData.title}`;
 
@@ -95,7 +86,6 @@ export default function Linecheck() {
       alert('Please fix invalid dates before submitting.');
       return;
     }
-    
 
     const entries = formData.fields.reduce<Record<string, any>>(
       (acc, field) => {
@@ -129,9 +119,9 @@ export default function Linecheck() {
   };
 
   useEffect(() => {
-    if (!formId) return;
+    if (!formId || !location) return;
 
-    const formRef = ref(db, `Forms/Locations/Test/${formId}`);
+    const formRef = ref(db, `Forms/Locations/${location}/${formId}`);
 
     get(formRef).then((snapshot) => {
       if (!snapshot.exists()) return;
@@ -141,7 +131,7 @@ export default function Linecheck() {
       const fields: Field[] = Object.entries(data.fields).map(
         ([id, field]: any) => ({
           id,
-          type: field.type,
+          type: field.type || 'temperature',
           label: field.label,
           description: field.description,
           min: field.min ?? null,
@@ -154,190 +144,212 @@ export default function Linecheck() {
         fields,
       });
     });
-  }, [formId]);
+  }, [formId, location]);
 
   return (
     <View style={styles.container}>
-      <View style={styles.background}>
-        <Text style={styles.title}>{formData.title}</Text>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Text style={styles.backText}>← Back</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>{formData.title}</Text>
+      </View>
 
-        <View style={styles.table}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.formCard}>
           {formData.fields.map((field) => (
-            <View key={field.id} style={styles.row}>
-              <View style={styles.labelContainer}>
-                <Text style={styles.label}>{field.label}</Text>
+            <View key={field.id} style={styles.fieldContainer}>
+              <View style={styles.fieldHeader}>
+                <Text style={styles.fieldLabel}>{field.label}</Text>
                 {field.description && (
-                  <Text style={styles.description}>
-                    {field.description}
-                  </Text>
+                  <Text style={styles.fieldDescription}>{field.description}</Text>
                 )}
-                {field.type === 'temperature' && (
-                  <Text style={styles.range}>
-                    ({field.min}–{field.max})
+                {field.type === 'temperature' && field.min !== null && field.max !== null && (
+                  <Text style={styles.fieldRange}>
+                    Range: {field.min}°F - {field.max}°F
                   </Text>
                 )}
               </View>
 
-              {field.type === 'temperature' ? (
-                <TextInput
-                  placeholder="°F"
-                  keyboardType="numeric"
-                  style={styles.input}
-                  value={values[field.id] || ''}
-                  onChangeText={(text) => {
-                    const cleaned = text.replace(/[^0-9]/g, '');
-                    setValues((prev) => ({
-                      ...prev,
-                      [field.id]: cleaned,
-                    }));
-                  }}
-                />
-              ) : (
-                <View style={styles.dateContainer}>
+              <View style={styles.inputContainer}>
+                {field.type === 'temperature' ? (
                   <TextInput
-                    placeholder="MM-DD"
-                    value={values[field.id] || ''}
-                    style={styles.dateInput}
+                    placeholder="Enter temperature"
                     keyboardType="numeric"
-                    maxLength={5}
+                    style={styles.input}
+                    value={values[field.id] || ''}
                     onChangeText={(text) => {
-                      let cleaned = text.replace(/[^0-9]/g, '');
-
-                      if (cleaned.length >= 3) {
-                        cleaned = `${cleaned.slice(0, 2)}-${cleaned.slice(2, 4)}`;
-                      }
-
+                      const cleaned = text.replace(/[^0-9]/g, '');
                       setValues((prev) => ({
                         ...prev,
                         [field.id]: cleaned,
                       }));
-
-                      if (cleaned.length === 5) {
-                        setErrors((prev) => ({
-                          ...prev,
-                          [field.id]: isValidMMDD(cleaned)
-                            ? ''
-                            : 'Invalid date',
-                        }));
-                      } else {
-                        setErrors((prev) => ({
-                          ...prev,
-                          [field.id]: '',
-                        }));
-                      }
                     }}
-
                   />
-                  {errors[field.id] ? (
-                    <Text style={{ color: 'red', fontSize: 12 }}>
-                      {errors[field.id]}
-                    </Text>
-                  ) : null}
+                ) : (
+                  <View>
+                    <TextInput
+                      placeholder="MM-DD"
+                      value={values[field.id] || ''}
+                      style={[
+                        styles.input,
+                        errors[field.id] && styles.inputError
+                      ]}
+                      keyboardType="numeric"
+                      maxLength={5}
+                      onChangeText={(text) => {
+                        let cleaned = text.replace(/[^0-9]/g, '');
 
-                </View>
-              )}
+                        if (cleaned.length >= 3) {
+                          cleaned = `${cleaned.slice(0, 2)}-${cleaned.slice(2, 4)}`;
+                        }
+
+                        setValues((prev) => ({
+                          ...prev,
+                          [field.id]: cleaned,
+                        }));
+
+                        if (cleaned.length === 5) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            [field.id]: isValidMMDD(cleaned)
+                              ? ''
+                              : 'Invalid date',
+                          }));
+                        } else {
+                          setErrors((prev) => ({
+                            ...prev,
+                            [field.id]: '',
+                          }));
+                        }
+                      }}
+                    />
+                    {errors[field.id] ? (
+                      <Text style={styles.errorText}>{errors[field.id]}</Text>
+                    ) : null}
+                  </View>
+                )}
+              </View>
             </View>
           ))}
         </View>
 
-        <View style={styles.submitContainer}>
-          <Pressable style={styles.submitButton} onPress={handleSubmit}>
-            <Text style={styles.submitText}>Submit</Text>
-          </Pressable>
-        </View>
-      </View>
+        <Pressable style={styles.submitButton} onPress={handleSubmit}>
+          <Text style={styles.submitText}>Submit Form</Text>
+        </Pressable>
+      </ScrollView>
     </View>
   );
 }
 
-export const options = {
-  headerShown: false,
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#333',
-    alignItems: 'center',
-    paddingTop: 24,
+    backgroundColor: '#f5f5f5',
   },
-  background: {
-    width: '80%',
+  header: {
+    paddingHorizontal: '5%',
+    paddingTop: '5%',
+    paddingBottom: '3%',
     backgroundColor: '#fff',
-    padding: 10,
-    borderWidth: 1,
-    borderColor: 'black',
-    alignItems: 'center',
-    height: '100%',
-  },
-  table: {
-    width: '100%',
-    maxWidth: '90%',
-    borderWidth: 1,
-    borderColor: 'black',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
     borderBottomWidth: 1,
-    borderColor: 'black',
-    paddingVertical: 8,
+    borderBottomColor: '#e0e0e0',
   },
-  labelContainer: {
-    width: '70%',
-    paddingLeft: 8,
+  backButton: {
+    marginBottom: 8,
   },
-  label: {
-    fontSize: 22,
+  backText: {
+    fontSize: 16,
+    color: '#4caf50',
+    fontWeight: '500',
   },
-  description: {
-    fontSize: 14,
-    color: '#666',
-  },
-  range: {
-    fontSize: 14,
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
     color: '#333',
   },
-  input: {
-    width: '30%',
-    borderLeftWidth: 1,
-    borderColor: '#ccc',
-    textAlign: 'center',
-    fontSize: 18,
-    paddingHorizontal: 8,
-  },
-  dateContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '30%',
-    borderLeftWidth: 1,
-    borderColor: '#ccc',
-    paddingHorizontal: 4,
-  },
-  dateInput: {
+  scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    padding: '5%',
+    paddingBottom: '10%',
+  },
+  formCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginBottom: 20,
+  },
+  fieldContainer: {
+    marginBottom: 24,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  fieldHeader: {
+    marginBottom: 12,
+  },
+  fieldLabel: {
     fontSize: 18,
-    textAlign: 'center',
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
   },
-  calendarButton: {
-    paddingHorizontal: 6,
+  fieldDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
   },
-  title: {
-    fontSize: 28,
-    paddingBottom: 12,
+  fieldRange: {
+    fontSize: 14,
+    color: '#4caf50',
+    fontWeight: '500',
   },
-  submitContainer: {
-    width: '20%',
-    paddingTop: 16,
+  inputContainer: {
+    marginTop: 8,
+  },
+  input: {
+    backgroundColor: '#f9f9f9',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    color: '#333',
+  },
+  inputError: {
+    borderColor: '#e53935',
+  },
+  errorText: {
+    color: '#e53935',
+    fontSize: 12,
+    marginTop: 4,
   },
   submitButton: {
-    backgroundColor: 'green',
-    borderRadius: 50,
-    paddingVertical: 8,
+    backgroundColor: '#4caf50',
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   submitText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 18,
     fontWeight: '600',
   },

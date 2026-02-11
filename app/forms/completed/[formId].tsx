@@ -1,7 +1,7 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { get, ref } from 'firebase/database';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { db } from '../../firebase/firebase';
 
 interface Entry {
@@ -14,19 +14,18 @@ interface Entry {
 }
 
 export default function CompletedFormView() {
-  const { formId } = useLocalSearchParams<{ formId: string }>();
+  const { formId, location } = useLocalSearchParams<{ formId: string; location: string }>();
+  const router = useRouter();
 
   const [title, setTitle] = useState('');
-  const [location, setLocation] = useState('');
   const [submittedAt, setSubmittedAt] = useState<number | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!formId) return;
+    if (!formId || !location) return;
 
-    const locationKey = 'Test'; // hard-coded for now
-    const submissionRef = ref(db, `CompletedForms/${locationKey}/${formId}`);
+    const submissionRef = ref(db, `CompletedForms/${location}/${formId}`);
 
     get(submissionRef).then((snapshot) => {
       if (!snapshot.exists()) return;
@@ -45,16 +44,14 @@ export default function CompletedFormView() {
         : [];
 
       setTitle(data.title);
-      setLocation(data.location);
       setSubmittedAt(data.submittedAt);
       setEntries(loadedEntries);
       setLoading(false);
     });
-  }, [formId]);
+  }, [formId, location]);
 
   const isPass = (entry: Entry) => {
     if (entry.type === 'temperature') {
-      // only check min/max if they are numbers
       return (
         typeof entry.value === 'number' &&
         typeof entry.min === 'number' &&
@@ -74,120 +71,216 @@ export default function CompletedFormView() {
   
     return false;
   };
-  
 
   if (loading) {
     return (
       <View style={styles.container}>
-        <Text>Loading…</Text>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Loading…</Text>
+        </View>
       </View>
     );
   }
 
-  return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.meta}>
-          {location} • {submittedAt && new Date(submittedAt).toLocaleString()}
-        </Text>
+  const passedCount = entries.filter(isPass).length;
+  const totalCount = entries.length;
+  const allPassed = passedCount === totalCount;
 
-        <View style={styles.table}>
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Text style={styles.backText}>← Back</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>{title}</Text>
+        <Text style={styles.headerSubtitle}>
+          {submittedAt && new Date(submittedAt).toLocaleDateString()}
+        </Text>
+      </View>
+
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.statusCard, allPassed ? styles.statusPass : styles.statusFail]}>
+          <Text style={styles.statusTitle}>
+            {allPassed ? '✓ All Checks Passed' : '⚠ Some Checks Failed'}
+          </Text>
+          <Text style={styles.statusSubtitle}>
+            {passedCount} of {totalCount} items within range
+          </Text>
+        </View>
+
+        <View style={styles.resultsCard}>
+          <Text style={styles.sectionTitle}>Results</Text>
+          
           {entries.map((entry) => {
             const pass = isPass(entry);
 
             return (
-              <View key={entry.id} style={styles.row}>
-                <View style={styles.labelCol}>
-                  <Text style={styles.label}>{entry.label}</Text>
-                  {entry.type === 'temperature' && (
-                    <Text style={styles.range}>
-                      Acceptable: {entry.min}–{entry.max}
+              <View key={entry.id} style={styles.entryContainer}>
+                <View style={styles.entryHeader}>
+                  <Text style={styles.entryLabel}>{entry.label}</Text>
+                  <View style={[styles.statusBadge, pass ? styles.passBadge : styles.failBadge]}>
+                    <Text style={styles.statusBadgeText}>
+                      {pass ? 'PASS' : 'FAIL'}
                     </Text>
-                  )}
+                  </View>
                 </View>
 
-                <View
-                  style={[
-                    styles.valueCol,
-                    pass ? styles.pass : styles.fail,
-                  ]}
-                >
-                  <Text style={styles.value}>{entry.value}</Text>
+                {entry.type === 'temperature' && (
+                  <Text style={styles.entryRange}>
+                    Acceptable range: {entry.min}°F - {entry.max}°F
+                  </Text>
+                )}
+
+                <View style={styles.valueContainer}>
+                  <Text style={styles.valueLabel}>Recorded Value:</Text>
+                  <Text style={styles.valueText}>
+                    {entry.type === 'temperature' ? `${entry.value}°F` : entry.value}
+                  </Text>
                 </View>
               </View>
             );
           })}
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
-export const options = {
-  headerShown: false,
-};
-
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#333',
-    padding: 20,
-    alignItems: 'center',
+    flex: 1,
+    backgroundColor: '#f5f5f5',
   },
-  card: {
-    width: '95%',
+  header: {
+    paddingHorizontal: '5%',
+    paddingTop: '5%',
+    paddingBottom: '3%',
     backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  meta: {
-    textAlign: 'center',
-    color: '#666',
-    marginBottom: 16,
-  },
-  table: {
-    borderTopWidth: 1,
-    borderColor: '#ddd',
-  },
-  row: {
-    flexDirection: 'row',
-    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: '#eee',
-    alignItems: 'center',
+    borderBottomColor: '#e0e0e0',
   },
-  labelCol: {
-    flex: 3,
+  backButton: {
+    marginBottom: 8,
   },
-  label: {
-    fontSize: 18,
+  backText: {
+    fontSize: 16,
+    color: '#4caf50',
     fontWeight: '500',
   },
-  range: {
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
     fontSize: 14,
     color: '#666',
   },
-  valueCol: {
+  scrollView: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 6,
+  },
+  scrollContent: {
+    padding: '5%',
+    paddingBottom: '10%',
+  },
+  statusCard: {
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  value: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  pass: {
+  statusPass: {
     backgroundColor: '#4caf50',
   },
-  fail: {
+  statusFail: {
+    backgroundColor: '#ff9800',
+  },
+  statusTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  statusSubtitle: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  resultsCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 16,
+  },
+  entryContainer: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  entryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  entryLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  passBadge: {
+    backgroundColor: '#4caf50',
+  },
+  failBadge: {
     backgroundColor: '#e53935',
+  },
+  statusBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  entryRange: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  valueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+    padding: 12,
+    borderRadius: 8,
+  },
+  valueLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginRight: 8,
+  },
+  valueText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
   },
 });

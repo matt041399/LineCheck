@@ -1,87 +1,111 @@
 import { useRouter } from 'expo-router';
+import { onAuthStateChanged } from 'firebase/auth';
 import { get, ref } from 'firebase/database';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { auth, db } from '../firebase/firebase';
 
 interface Form {
   id: string;
   title: string;
+  location: string;
   data: string[];
 }
 
+const IS_ADMIN = true; //change later after users are added
+
 export default function MyForms() {
   const [forms, setForms] = useState<Form[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    async function fetchUserAndForms() {
-      if (!auth.currentUser) return;
-
-      const uid = auth.currentUser.uid;
-      const userRef = ref(db, `Users/${uid}`);
-      const userSnapshot = await get(userRef);
-
-      if (userSnapshot.exists()) {
-        const userData = userSnapshot.val();
-        setIsAdmin(userData.isAdmin ?? false);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const userRef = ref(db, `Users/${user.uid}`);
+        const snapshot = await get(userRef);
+        
+        if (snapshot.exists()) {
+          const userData = snapshot.val();
+          const userLocations = userData.location || [];
+          
+          // Fetch forms from all user locations
+          const allForms: Form[] = [];
+          
+          for (const location of userLocations) {
+            const locationRef = ref(db, `Forms/Locations/${location}`);
+            const locationSnapshot = await get(locationRef);
+            
+            if (locationSnapshot.exists()) {
+              const formsData = locationSnapshot.val();
+              Object.keys(formsData).forEach((formId) => {
+                allForms.push({
+                  id: formId,
+                  title: formsData[formId].title,
+                  location: location,
+                  data: formsData[formId].fields,
+                });
+              });
+            }
+          }
+          
+          setForms(allForms);
+        }
       }
+    });
 
-      // Fetch forms for the user's location
-      const location = userSnapshot.exists() ? userSnapshot.val().location : 'Test';
-      const formsRef = ref(db, `Forms/Locations/${location}`);
-      const formsSnapshot = await get(formsRef);
-
-      if (formsSnapshot.exists()) {
-        const formsData = formsSnapshot.val();
-        const formsArray: Form[] = Object.keys(formsData).map((formId) => ({
-          id: formId,
-          title: formsData[formId].title,
-          data: formsData[formId].fields,
-        }));
-        setForms(formsArray);
-      }
-    }
-
-    fetchUserAndForms();
+    return () => unsubscribe();
   }, []);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>My Forms</Text>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Available Forms</Text>
+      </View>
 
-      {forms.map((form) => (
-        <View key={form.id} style={styles.row}>
-          {/* View form */}
-          <Pressable
-            style={styles.formButton}
-            onPress={() =>
-              router.push({
-                pathname: '/forms/[formId]',
-                params: { formId: form.id },
-              } as any)
-            }
-          >
-            <Text style={styles.formText}>{form.title}</Text>
-          </Pressable>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.cardsContainer}>
+          {forms.map((form) => (
+            <View key={`${form.location}-${form.id}`} style={styles.cardWrapper}>
+              <Pressable
+                style={styles.card}
+                onPress={() =>
+                  router.push({
+                    pathname: '/forms/[formId]',
+                    params: { formId: form.id, location: form.location },
+                  } as any)
+                }
+              >
+                <View style={styles.cardContent}>
+                  <Text style={styles.cardTitle}>{form.title}</Text>
+                  <Text style={styles.cardLocation}>{form.location}</Text>
+                </View>
+                
+                <View style={styles.cardArrow}>
+                  <Text style={styles.arrowText}>→</Text>
+                </View>
+              </Pressable>
 
-          {/* Edit form — ADMIN ONLY */}
-          {isAdmin && (
-            <Pressable
-              style={styles.editButton}
-              onPress={() =>
-                router.push({
-                  pathname: '/forms/edit/[formId]',
-                  params: { formId: form.id },
-                } as any)
-              }
-            >
-              <Text style={styles.editText}>✏️</Text>
-            </Pressable>
-          )}
+              {IS_ADMIN && (
+                <Pressable
+                  style={styles.editButton}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/forms/edit/[formId]',
+                      params: { formId: form.id, location: form.location },
+                    } as any)
+                  }
+                >
+                  <Text style={styles.editText}>✏️</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
         </View>
-      ))}
+      </ScrollView>
     </View>
   );
 }
@@ -89,46 +113,93 @@ export default function MyForms() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    padding: 20,
+    backgroundColor: '#f5f5f5',
   },
-
-  title: {
-    fontSize: 28,
+  header: {
+    paddingHorizontal: '5%',
+    paddingTop: '5%',
+    paddingBottom: '3%',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  headerTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 20,
+    color: '#333',
   },
-
-  row: {
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: '5%',
+  },
+  cardsContainer: {
+    gap: 16,
+  },
+  cardWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: '90%',
-    marginVertical: 6,
+    gap: 12,
   },
-
-  formButton: {
+  card: {
     flex: 1,
-    padding: 16,
-    backgroundColor: '#4caf50',
-    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
-
-  formText: {
-    color: 'white',
-    fontSize: 18,
+  cardContent: {
+    flex: 1,
   },
-
-  editButton: {
-    marginLeft: 10,
-    padding: 16,
-    backgroundColor: '#ddd',
-    borderRadius: 8,
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  cardLocation: {
+    fontSize: 14,
+    color: '#666',
+  },
+  cardArrow: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#4caf50',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  editText: {
+  arrowText: {
+    color: '#fff',
     fontSize: 18,
+    fontWeight: 'bold',
+  },
+  editButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  editText: {
+    fontSize: 22,
   },
 });

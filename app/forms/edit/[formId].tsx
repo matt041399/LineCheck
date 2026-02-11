@@ -2,9 +2,8 @@ import { Picker } from '@react-native-picker/picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { get, ref, update } from 'firebase/database';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { db } from '../../firebase/firebase';
-
 
 interface FormRow {
   id: string;
@@ -16,18 +15,17 @@ interface FormRow {
 }
 
 export default function EditForm() {
-  const { formId } = useLocalSearchParams<{ formId: string }>();
+  const { formId, location } = useLocalSearchParams<{ formId: string; location: string }>();
   const router = useRouter();
 
   const [title, setTitle] = useState('');
   const [rows, setRows] = useState<FormRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  /** -------- Load Existing Form -------- */
   useEffect(() => {
-    if (!formId) return;
+    if (!formId || !location) return;
 
-    const formRef = ref(db, `Forms/Locations/Test/${formId}`);
+    const formRef = ref(db, `Forms/Locations/${location}/${formId}`);
 
     get(formRef).then((snapshot) => {
       if (!snapshot.exists()) return;
@@ -49,9 +47,8 @@ export default function EditForm() {
       setRows(loadedRows);
       setLoading(false);
     });
-  }, [formId]);
+  }, [formId, location]);
 
-  /** -------- Row Helpers -------- */
   const addRow = () => {
     const newId = `field_${Date.now()}`;
     setRows((prev) => [
@@ -76,9 +73,8 @@ export default function EditForm() {
     );
   };
 
-  /** -------- Save -------- */
   const saveForm = async () => {
-    if (!formId) return;
+    if (!formId || !location) return;
 
     const fieldsObject = rows.reduce<Record<string, any>>((acc, row) => {
       acc[row.id] = {
@@ -91,7 +87,7 @@ export default function EditForm() {
       return acc;
     }, {});
 
-    const formRef = ref(db, `Forms/Locations/Test/${formId}`);
+    const formRef = ref(db, `Forms/Locations/${location}/${formId}`);
 
     await update(formRef, {
       title,
@@ -104,223 +100,273 @@ export default function EditForm() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <Text>Loading…</Text>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Loading…</Text>
+        </View>
       </View>
     );
   }
 
-  /** -------- UI -------- */
   return (
     <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.header}>Edit Form</Text>
-        <Text style={styles.header}>Form Title</Text>
-        <TextInput
-          placeholder="Form Title"
-          value={title}
-          onChangeText={setTitle}
-          style={styles.titleInput}
-        />
-        <View style={styles.headerRow}>
-          <Text style={[styles.headerText, styles.typeCol]}>Type</Text>
-          <Text style={[styles.headerText, styles.labelCol]}>Label</Text>
-          <Text style={[styles.headerText, styles.descCol]}>Description</Text>
-          <Text style={[styles.headerText, styles.numCol]}>Min</Text>
-          <Text style={[styles.headerText, styles.numCol]}>Max</Text>
-          <View style={styles.deleteSpacer} />
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Text style={styles.backText}>← Back</Text>
+        </Pressable>
+        <Text style={styles.headerTitle}>Edit Form</Text>
+      </View>
+
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.formCard}>
+          <Text style={styles.sectionTitle}>Form Title</Text>
+          <TextInput
+            placeholder="Enter form title"
+            value={title}
+            onChangeText={setTitle}
+            style={styles.titleInput}
+          />
         </View>
 
-        {rows.map((row) => (
-          <View key={row.id} style={styles.row}>
-            {/* Type Dropdown */}
-            <View style={styles.typePicker}>
-              <Picker
-                selectedValue={row.type}
-                onValueChange={(val) => updateRow(row.id, 'type', val)}
-                style={{ height: 40, width: '100%' }}
-              >
-                <Picker.Item label="Temperature" value="temperature" />
-                <Picker.Item label="Date" value="date" />
-              </Picker>
+        <View style={styles.formCard}>
+          <Text style={styles.sectionTitle}>Form Fields</Text>
+          
+          {rows.map((row, index) => (
+            <View key={row.id} style={styles.fieldCard}>
+              <View style={styles.fieldHeader}>
+                <Text style={styles.fieldNumber}>Field {index + 1}</Text>
+                <Pressable onPress={() => removeRow(row.id)} style={styles.removeButton}>
+                  <Text style={styles.removeText}>Remove</Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.inputLabel}>Type</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={row.type}
+                  onValueChange={(val) => updateRow(row.id, 'type', val)}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Temperature" value="temperature" />
+                  <Picker.Item label="Date" value="date" />
+                </Picker>
+              </View>
+
+              <Text style={styles.inputLabel}>Label</Text>
+              <TextInput
+                placeholder="Field label"
+                value={row.label}
+                onChangeText={(v) => updateRow(row.id, 'label', v)}
+                style={styles.input}
+              />
+
+              <Text style={styles.inputLabel}>Description (Optional)</Text>
+              <TextInput
+                placeholder="Field description"
+                value={row.description}
+                onChangeText={(v) => updateRow(row.id, 'description', v)}
+                style={styles.input}
+              />
+
+              {row.type === 'temperature' && (
+                <>
+                  <View style={styles.rangeRow}>
+                    <View style={styles.rangeItem}>
+                      <Text style={styles.inputLabel}>Min Temp</Text>
+                      <TextInput
+                        placeholder="Min"
+                        keyboardType="numeric"
+                        value={row.min}
+                        onChangeText={(v) =>
+                          updateRow(row.id, 'min', v.replace(/[^0-9]/g, ''))
+                        }
+                        style={styles.input}
+                      />
+                    </View>
+                    <View style={styles.rangeItem}>
+                      <Text style={styles.inputLabel}>Max Temp</Text>
+                      <TextInput
+                        placeholder="Max"
+                        keyboardType="numeric"
+                        value={row.max}
+                        onChangeText={(v) =>
+                          updateRow(row.id, 'max', v.replace(/[^0-9]/g, ''))
+                        }
+                        style={styles.input}
+                      />
+                    </View>
+                  </View>
+                </>
+              )}
             </View>
+          ))}
 
-            {/* Label */}
-            <TextInput
-              placeholder="Label"
-              value={row.label}
-              onChangeText={(v) => updateRow(row.id, 'label', v)}
-              style={styles.labelInput}
-            />
-
-            {/* Description */}
-            <TextInput
-              placeholder="Description"
-              value={row.description}
-              onChangeText={(v) => updateRow(row.id, 'description', v)}
-              style={styles.descInput}
-            />
-
-            {/* Min/Max only for temperature */}
-            {row.type === 'temperature' ? (
-              <>
-                <TextInput
-                  placeholder="Min"
-                  keyboardType="numeric"
-                  value={row.min}
-                  onChangeText={(v) =>
-                    updateRow(row.id, 'min', v.replace(/[^0-9]/g, ''))
-                  }
-                  style={styles.numInput}
-                />
-                <TextInput
-                  placeholder="Max"
-                  keyboardType="numeric"
-                  value={row.max}
-                  onChangeText={(v) =>
-                    updateRow(row.id, 'max', v.replace(/[^0-9]/g, ''))
-                  }
-                  style={styles.numInput}
-                />
-              </>
-            ) : (
-              <>
-                <View style={styles.numInputPlaceholder} />
-                <View style={styles.numInputPlaceholder} />
-              </>
-            )}
-
-            <Pressable onPress={() => removeRow(row.id)}>
-              <Text style={styles.remove}>−</Text>
-            </Pressable>
-          </View>
-        ))}
-
-        <Pressable onPress={addRow} style={styles.addButton}>
-          <Text style={styles.addText}>+ Add Line</Text>
-        </Pressable>
+          <Pressable onPress={addRow} style={styles.addButton}>
+            <Text style={styles.addText}>+ Add Field</Text>
+          </Pressable>
+        </View>
 
         <Pressable onPress={saveForm} style={styles.saveButton}>
           <Text style={styles.saveText}>Save Changes</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
-/** -------- Styles -------- */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#333',
-    alignItems: 'center',
-    paddingTop: 24,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-    paddingBottom: 4,
-    borderBottomWidth: 1,
-    borderColor: '#ccc',
-  },
-  headerText: {
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  typeCol: {
-    flex: 1,
-  },
-  labelCol: {
-    flex: 2,
-  },
-  descCol: {
-    flex: 2,
-  },
-  numCol: {
-    flex: 1,
-  },
-  deleteSpacer: {
-    width: 24,
-  },
-  card: {
-    width: '90%',
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
   },
   header: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 12,
-    textAlign: 'center',
+    paddingHorizontal: '5%',
+    paddingTop: '5%',
+    paddingBottom: '3%',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
-  titleInput: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 10,
-    marginBottom: 12,
-    fontSize: 18,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  backButton: {
     marginBottom: 8,
   },
-  typePicker: {
+  backText: {
+    fontSize: 16,
+    color: '#4caf50',
+    fontWeight: '500',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  scrollView: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    marginRight: 4,
   },
-  labelInput: {
-    flex: 2,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 8,
-    marginRight: 4,
+  scrollContent: {
+    padding: '5%',
+    paddingBottom: '10%',
   },
-  descInput: {
-    flex: 2,
+  formCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 8,
-    marginHorizontal: 4,
+    borderColor: '#e0e0e0',
+    marginBottom: 20,
   },
-  numInput: {
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 16,
+  },
+  titleInput: {
+    backgroundColor: '#f9f9f9',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    color: '#333',
+  },
+  fieldCard: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  fieldHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  fieldNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  removeButton: {
+    backgroundColor: '#e53935',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  removeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
+    marginBottom: 6,
+    marginTop: 8,
+  },
+  pickerContainer: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
+  },
+  input: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#333',
+  },
+  rangeRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  rangeItem: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 8,
-    marginHorizontal: 4,
-    textAlign: 'center',
-  },
-  numInputPlaceholder: {
-    flex: 1,
-    marginHorizontal: 4,
-  },
-  remove: {
-    fontSize: 22,
-    color: 'red',
-    paddingHorizontal: 8,
   },
   addButton: {
-    marginTop: 12,
+    backgroundColor: '#2196f3',
+    borderRadius: 8,
+    padding: 14,
     alignItems: 'center',
+    marginTop: 8,
   },
   addText: {
-    color: '#007aff',
+    color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
   },
   saveButton: {
-    marginTop: 20,
-    backgroundColor: 'green',
-    padding: 14,
-    borderRadius: 8,
+    backgroundColor: '#4caf50',
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   saveText: {
-    color: 'white',
+    color: '#fff',
     fontSize: 18,
     fontWeight: '600',
   },

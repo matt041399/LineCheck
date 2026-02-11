@@ -23,7 +23,13 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Dashboard</Text>
-        <Text style={styles.headerSubtitle}>Manage your forms and line checks</Text>
+        
+        <Pressable 
+          style={styles.settingsButton}
+          onPress={() => router.push('../users/settings')}
+        >
+          <Text style={styles.settingsIcon}>⚙️</Text>
+        </Pressable>
       </View>
 
       <View style={styles.cardsContainer}>
@@ -56,21 +62,36 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
-    padding: 20,
+    padding: '5%',
   },
   header: {
-    marginTop: 40,
-    marginBottom: 30,
+    marginTop: '5%',
+    marginBottom: '8%',
+    position: 'relative',
   },
   headerTitle: {
     fontSize: 32,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 8,
   },
-  headerSubtitle: {
-    fontSize: 16,
-    color: '#666',
+  settingsButton: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  settingsIcon: {
+    fontSize: 24,
   },
   cardsContainer: {
     flex: 1,
