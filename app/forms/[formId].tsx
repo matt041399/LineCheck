@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { db } from '../firebase/firebase';
 
-type FieldType = 'temperature' | 'date';
+type FieldType = 'temperature' | 'date' | 'section';
 
 interface Field {
   id: string;
@@ -13,6 +13,8 @@ interface Field {
   description?: string;
   min: number | null;
   max: number | null;
+  order: number;
+  sectionId?: string;
 }
 
 interface FormData {
@@ -36,7 +38,6 @@ export default function Linecheck() {
     if (!/^\d{2}-\d{2}$/.test(value)) return false;
 
     const [mm, dd] = value.split('-').map(Number);
-
     if (mm < 1 || mm > 12) return false;
 
     const year = new Date().getFullYear();
@@ -58,28 +59,23 @@ export default function Linecheck() {
 
     if (snapshot.exists()) {
       const existingKeys = Object.keys(snapshot.val());
-      const count = existingKeys.filter((k) =>
-        k.startsWith(baseKey)
-      ).length;
-
+      const count = existingKeys.filter((k) => k.startsWith(baseKey)).length;
       if (count > 0) {
         submissionKey = `${baseKey} (${count + 1})`;
       }
     }
 
-    const missing = formData.fields.some(
-      (field) => !values[field.id]
-    );
+    // Only check non-section fields
+    const dataFields = formData.fields.filter(f => f.type !== 'section');
+    const missing = dataFields.some((field) => !values[field.id]);
 
     if (missing) {
       alert('Please fill out all fields before submitting.');
       return;
     }
 
-    const hasInvalidDate = formData.fields.some(
-      (field) =>
-        field.type === 'date' &&
-        !isValidMMDD(values[field.id])
+    const hasInvalidDate = dataFields.some(
+      (field) => field.type === 'date' && !isValidMMDD(values[field.id])
     );
     
     if (hasInvalidDate) {
@@ -87,15 +83,12 @@ export default function Linecheck() {
       return;
     }
 
-    const entries = formData.fields.reduce<Record<string, any>>(
+    const entries = dataFields.reduce<Record<string, any>>(
       (acc, field) => {
         acc[field.id] = {
           label: field.label,
           type: field.type,
-          value:
-            field.type === 'temperature'
-              ? Number(values[field.id])
-              : values[field.id],
+          value: field.type === 'temperature' ? Number(values[field.id]) : values[field.id],
           min: field.min,
           max: field.max,
         };
@@ -121,27 +114,67 @@ export default function Linecheck() {
   useEffect(() => {
     if (!formId || !location) return;
 
-    const formRef = ref(db, `Forms/Locations/${location}/${formId}`);
+    const formRef = ref(db, `Forms/${location}/${formId}`);
 
-    get(formRef).then((snapshot) => {
+    get(formRef).then(async (snapshot) => {
       if (!snapshot.exists()) return;
 
       const data = snapshot.val();
+      const formGroupId = data.formGroupId;
+      const customizations = data.customizations || {};
 
-      const fields: Field[] = Object.entries(data.fields).map(
-        ([id, field]: any) => ({
-          id,
-          type: field.type || 'temperature',
-          label: field.label,
-          description: field.description,
-          min: field.min ?? null,
-          max: field.max ?? null,
-        })
-      );
+      // Fetch FormGroup
+      const formGroupRef = ref(db, `FormGroups/${formGroupId}`);
+      const formGroupSnap = await get(formGroupRef);
+
+      if (!formGroupSnap.exists()) return;
+
+      const formGroup = formGroupSnap.val();
+
+      // Merge sections and fields, apply customizations
+      const allItems: Field[] = [];
+
+      // Add sections
+      if (formGroup.sections) {
+        Object.entries(formGroup.sections).forEach(([id, section]: any) => {
+          allItems.push({
+            id,
+            type: 'section',
+            label: section.title,
+            order: section.order,
+            min: null,
+            max: null,
+          });
+        });
+      }
+
+      // Add fields
+      if (formGroup.fields) {
+        Object.entries(formGroup.fields).forEach(([id, field]: any) => {
+          // Skip if hidden by customization
+          if (customizations[id]?.hidden) return;
+
+          const fieldCustom = customizations[id] || {};
+          
+          allItems.push({
+            id,
+            type: field.type || 'temperature',
+            label: field.label,
+            description: field.description,
+            min: fieldCustom.min ?? field.min ?? null,
+            max: fieldCustom.max ?? field.max ?? null,
+            order: field.order,
+            sectionId: field.sectionId,
+          });
+        });
+      }
+
+      // Sort by order
+      allItems.sort((a, b) => a.order - b.order);
 
       setFormData({
-        title: data.title,
-        fields,
+        title: formGroup.title,
+        fields: allItems,
       });
     });
   }, [formId, location]);
@@ -161,81 +194,89 @@ export default function Linecheck() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.formCard}>
-          {formData.fields.map((field) => (
-            <View key={field.id} style={styles.fieldContainer}>
-              <View style={styles.fieldHeader}>
-                <Text style={styles.fieldLabel}>{field.label}</Text>
-                {field.description && (
-                  <Text style={styles.fieldDescription}>{field.description}</Text>
-                )}
-                {field.type === 'temperature' && field.min !== null && field.max !== null && (
-                  <Text style={styles.fieldRange}>
-                    Range: {field.min}°F - {field.max}°F
-                  </Text>
-                )}
-              </View>
+          {formData.fields.map((field) => {
+            if (field.type === 'section') {
+              return (
+                <View key={field.id} style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>{field.label}</Text>
+                </View>
+              );
+            }
 
-              <View style={styles.inputContainer}>
-                {field.type === 'temperature' ? (
-                  <TextInput
-                    placeholder="Enter temperature"
-                    keyboardType="numeric"
-                    style={styles.input}
-                    value={values[field.id] || ''}
-                    onChangeText={(text) => {
-                      const cleaned = text.replace(/[^0-9]/g, '');
-                      setValues((prev) => ({
-                        ...prev,
-                        [field.id]: cleaned,
-                      }));
-                    }}
-                  />
-                ) : (
-                  <View>
+            return (
+              <View key={field.id} style={styles.fieldContainer}>
+                <View style={styles.fieldHeader}>
+                  <Text style={styles.fieldLabel}>{field.label}</Text>
+                  {field.description && (
+                    <Text style={styles.fieldDescription}>{field.description}</Text>
+                  )}
+                  {field.type === 'temperature' && field.min !== null && field.max !== null && (
+                    <Text style={styles.fieldRange}>
+                      Range: {field.min}°F - {field.max}°F
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.inputContainer}>
+                  {field.type === 'temperature' ? (
                     <TextInput
-                      placeholder="MM-DD"
-                      value={values[field.id] || ''}
-                      style={[
-                        styles.input,
-                        errors[field.id] && styles.inputError
-                      ]}
+                      placeholder="Enter temperature"
                       keyboardType="numeric"
-                      maxLength={5}
+                      style={styles.input}
+                      value={values[field.id] || ''}
                       onChangeText={(text) => {
-                        let cleaned = text.replace(/[^0-9]/g, '');
-
-                        if (cleaned.length >= 3) {
-                          cleaned = `${cleaned.slice(0, 2)}-${cleaned.slice(2, 4)}`;
-                        }
-
+                        const cleaned = text.replace(/[^0-9]/g, '');
                         setValues((prev) => ({
                           ...prev,
                           [field.id]: cleaned,
                         }));
-
-                        if (cleaned.length === 5) {
-                          setErrors((prev) => ({
-                            ...prev,
-                            [field.id]: isValidMMDD(cleaned)
-                              ? ''
-                              : 'Invalid date',
-                          }));
-                        } else {
-                          setErrors((prev) => ({
-                            ...prev,
-                            [field.id]: '',
-                          }));
-                        }
                       }}
                     />
-                    {errors[field.id] ? (
-                      <Text style={styles.errorText}>{errors[field.id]}</Text>
-                    ) : null}
-                  </View>
-                )}
+                  ) : (
+                    <View>
+                      <TextInput
+                        placeholder="MM-DD"
+                        value={values[field.id] || ''}
+                        style={[
+                          styles.input,
+                          errors[field.id] && styles.inputError
+                        ]}
+                        keyboardType="numeric"
+                        maxLength={5}
+                        onChangeText={(text) => {
+                          let cleaned = text.replace(/[^0-9]/g, '');
+
+                          if (cleaned.length >= 3) {
+                            cleaned = `${cleaned.slice(0, 2)}-${cleaned.slice(2, 4)}`;
+                          }
+
+                          setValues((prev) => ({
+                            ...prev,
+                            [field.id]: cleaned,
+                          }));
+
+                          if (cleaned.length === 5) {
+                            setErrors((prev) => ({
+                              ...prev,
+                              [field.id]: isValidMMDD(cleaned) ? '' : 'Invalid date',
+                            }));
+                          } else {
+                            setErrors((prev) => ({
+                              ...prev,
+                              [field.id]: '',
+                            }));
+                          }
+                        }}
+                      />
+                      {errors[field.id] ? (
+                        <Text style={styles.errorText}>{errors[field.id]}</Text>
+                      ) : null}
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         <Pressable style={styles.submitButton} onPress={handleSubmit}>
@@ -291,6 +332,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
     marginBottom: 20,
+  },
+  sectionHeader: {
+    backgroundColor: '#f0f0f0',
+    marginHorizontal: -20,
+    marginBottom: 16,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#4caf50',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   fieldContainer: {
     marginBottom: 24,
